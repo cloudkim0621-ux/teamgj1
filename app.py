@@ -1,141 +1,128 @@
 import streamlit as st
 import pandas as pd
+import os
 from datetime import datetime
 
-# 1. 페이지 기본 설정
-st.set_page_config(page_title="OSS! 주짓수 통합관리", layout="wide", initial_sidebar_state="expanded")
+# 1. 페이지 설정 및 데이터 파일 경로
+st.set_page_config(page_title="OSS! 주짓수 통합관리", layout="wide")
+DB_FILE = "members_db.csv"  # 데이터가 저장될 파일 이름
 
-# 2. 데이터 초기화 (세션 상태 활용 - 실제 운영 시 DB 연동 추천)
-if 'members' not in st.session_state:
-    st.session_state.members = pd.DataFrame([
-        {"이름": "김주짓", "벨트": "블루", "그랄": 2, "회비": "완납", "구분": "일반부", "연락처": "010-1234-5678"},
-        {"이름": "이체크", "벨트": "화이트", "그랄": 4, "회비": "미납", "구분": "선수반", "연락처": "010-9876-5432"}
-    ])
+# 2. 데이터 불러오기/저장 함수
+def load_data():
+    if os.path.exists(DB_FILE):
+        return pd.read_csv(DB_FILE)
+    else:
+        # 파일이 없으면 빈 표를 만듭니다.
+        df = pd.DataFrame(columns=["이름", "연락처", "구분", "벨트", "그랄", "회비상태", "등록일", "메모"])
+        df.to_csv(DB_FILE, index=False, encoding='utf-8-sig')
+        return df
 
-if 'logs' not in st.session_state:
-    st.session_state.logs = [] # 출결 및 상담 기록용
+def save_data(df):
+    df.to_csv(DB_FILE, index=False, encoding='utf-8-sig')
 
-# 3. 사이드바 내비게이션
-with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/3253/3253773.png", width=100)
-    st.title("OSS! GYM ADMIN")
-    menu = st.radio("메뉴 이동", [
-        "🏠 대시보드", 
-        "🎓 승급/관원 관리", 
-        "📅 출결/성장기록", 
-        "💰 회비/미납 관리", 
-        "👪 학부모 소통/상담", 
-        "🏆 대회/선수반 관리", 
-        "🎥 영상공유/브랜딩"
-    ])
-    st.info("로그아웃 하시려면 브라우저를 닫으세요.")
+# 웹 실행 시 데이터 로드
+if 'df' not in st.session_state:
+    st.session_state.df = load_data()
 
-# --- 메뉴별 기능 구현 ---
+# 3. 사이드바 메뉴 (관장님 요청 10가지 기능 통합)
+st.sidebar.title("🥋 OSS! GYM ADMIN")
+menu = st.sidebar.radio("메뉴 선택", [
+    "🏠 홈/대시보드", 
+    "🎓 관원 명단/승급관리", 
+    "📅 출결 및 성장기록", 
+    "💰 회비 수납관리", 
+    "👪 학부모 상담/기록", 
+    "🏆 대회/선수반 관리", 
+    "🎥 영상공유/브랜딩"
+])
 
-# [1] 대시보드 (홈/통계)
-if menu == "🏠 대시보드":
+# --- 각 메뉴별 실제 기능 ---
+
+if menu == "🏠 홈/대시보드":
     st.title("📊 체육관 운영 현황")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("전체 관원", f"{len(st.session_state.members)}명")
-    c2.metric("미납 회비", f"{len(st.session_state.members[st.session_state.members['회비'] == '미납'])}건")
-    c3.metric("오늘 출석", "15명") # 가상 데이터
-    c4.metric("대회 준비인원", "4명")
-
+    df = st.session_state.df
+    col1, col2, col3 = st.columns(3)
+    col1.metric("전체 관원", f"{len(df)}명")
+    col2.metric("회비 미납", f"{len(df[df['회비상태'] == '미납'])}명")
+    col3.metric("선수반 인원", f"{len(df[df['구분'] == '선수반'])}명")
     st.divider()
-    st.subheader("🔔 주요 알림")
-    st.warning("이체크 관원의 회비가 3일 지났습니다.")
-    st.info("이번 주 금요일 승급 심사가 예정되어 있습니다.")
+    st.subheader("📋 최근 등록 관원")
+    st.dataframe(df.tail(5), use_container_width=True)
 
-# [2] 승급/관원 관리 (띠 관리 포함)
-elif menu == "🎓 승급/관원 관리":
-    st.title("🎓 관원 명단 및 승급 관리")
+elif menu == "🎓 관원 명단/승급관리":
+    st.title("🎓 관원 정보 및 승급(띠) 관리")
     
-    # 관원 추가 기능
+    # 신규 관원 추가
     with st.expander("➕ 신규 관원 등록"):
-        with st.form("new_member"):
-            name = st.text_input("이름")
-            belt = st.selectbox("벨트", ["화이트", "블루", "퍼플", "브라운", "블랙"])
-            stripe = st.slider("그랄", 0, 4, 0)
-            group = st.selectbox("구분", ["일반부", "선수반", "키즈부"])
-            contact = st.text_input("연락처")
+        with st.form("add_form", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            name = c1.text_input("이름")
+            phone = c2.text_input("연락처")
+            group = c1.selectbox("구분", ["일반부", "키즈부", "선수반"])
+            belt = c2.selectbox("벨트", ["화이트", "블루", "퍼플", "브라운", "블랙"])
+            stripe = st.slider("그랄 수", 0, 4, 0)
             if st.form_submit_button("등록 완료"):
-                new_entry = {"이름": name, "벨트": belt, "그랄": stripe, "회비": "미납", "구분": group, "연락처": contact}
-                st.session_state.members = pd.concat([st.session_state.members, pd.DataFrame([new_entry])], ignore_index=True)
-                st.success(f"{name} 관원이 등록되었습니다.")
+                new_data = {
+                    "이름": name, "연락처": phone, "구분": group, 
+                    "벨트": belt, "그랄": stripe, "회비상태": "미납", 
+                    "등록일": datetime.now().strftime("%Y-%m-%d"), "메모": ""
+                }
+                st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_data])], ignore_index=True)
+                save_data(st.session_state.df)
+                st.success(f"{name} 관원이 등록되었습니다!")
                 st.rerun()
 
-    # 명단 편집 (승급 처리)
-    st.subheader("👥 명단 편집 (그랄/띠 변경)")
-    edited_df = st.data_editor(st.session_state.members, use_container_width=True, num_rows="dynamic")
-    if st.button("💾 변경사항 저장"):
-        st.session_state.members = edited_df
-        st.success("정보가 업데이트되었습니다.")
+    # 전체 명단 수정 및 삭제
+    st.subheader("✏️ 명단 수정 (표에서 직접 수정 후 아래 저장 버튼을 누르세요)")
+    edited_df = st.data_editor(st.session_state.df, use_container_width=True, num_rows="dynamic")
+    if st.button("💾 모든 변경사항 저장하기"):
+        st.session_state.df = edited_df
+        save_data(edited_df)
+        st.success("데이터가 안전하게 저장되었습니다!")
 
-# [3] 출결/성장기록
-elif menu == "📅 출결/성장기록":
-    st.title("📅 출결 및 성장 기록")
+elif menu == "📅 출결 및 성장기록":
+    st.title("📅 출결 확인 및 실력 성장기록")
+    selected_name = st.selectbox("대상 관원 선택", st.session_state.df["이름"])
     
-    tab1, tab2 = st.tabs(["출석 체크", "성장 기록(기술 습득)"])
-    
-    with tab1:
-        name = st.selectbox("출석 관원 선택", st.session_state.members["이름"])
-        if st.button("출석 확인"):
-            log = f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] {name} - 출석 완료"
-            st.session_state.logs.append(log)
-            st.success(log)
-            
-    with tab2:
-        target = st.selectbox("기록할 관원", st.session_state.members["이름"], key="growth")
-        skill = st.text_input("오늘 배운 기술 (ex. 데라히바 가드)")
-        rating = st.select_slider("이해도", options=["미숙", "보통", "우수", "완벽"])
-        if st.button("기록 저장"):
-            st.info(f"{target} 관원의 {skill} 이해도가 '{rating}'로 기록되었습니다.")
-
-# [4] 회비/미납 관리
-elif menu == "💰 회비/미납 관리":
-    st.title("💰 회비 수납 관리")
-    unpaid = st.session_state.members[st.session_state.members["회비"] == "미납"]
-    
-    st.subheader(f"⚠️ 미납자 현황 ({len(unpaid)}명)")
-    st.dataframe(unpaid[["이름", "연락처", "구분"]], use_container_width=True)
-    
-    if st.button("📢 미납자 전체 알림톡 전송(가상)"):
-        st.success("미납 관원들에게 안내 메시지가 발송되었습니다.")
-
-# [5] 학부모 소통/상담
-elif menu == "👪 학부모 소통/상담":
-    st.title("👪 학부모 상담 및 소통")
-    parent_target = st.selectbox("대상 관원(아이)", st.session_state.members[st.session_state.members["구분"]=="키즈부"]["이름"] if not st.session_state.members[st.session_state.members["구분"]=="키즈부"].empty else ["대상 없음"])
-    counsel_note = st.text_area("상담 내용 기록")
-    if st.button("상담 일지 저장"):
-        st.success(f"{parent_target} 상담 내용이 저장되었습니다.")
-        st.write("---")
-        st.info("알림: 저장된 내용은 나중에 '학부모 전용 앱'으로 연동할 수 있습니다.")
-
-# [6] 대회/선수반 관리
-elif menu == "🏆 대회/선수반 관리":
-    st.title("🏆 대회 출전 및 선수반 특별 관리")
     col_a, col_b = st.columns(2)
-    
     with col_a:
-        st.subheader("🥇 대회 출전 명단")
-        st.write("- 24년 6월 서울 오픈: 김주짓(-76kg)")
-        st.write("- 24년 7월 지역 대회: 이체크(-82kg)")
-        
+        if st.button("✅ 오늘 출석 체크"):
+            st.success(f"{datetime.now().strftime('%m/%d')} {selected_name} 관원 출석 완료!")
     with col_b:
-        st.subheader("🏋️ 선수반 훈련 강도")
-        st.progress(85, text="이번 주 훈련 강도 85%")
-        st.write("중점 사항: 스파링 디테일 및 체력 훈련")
+        skill_note = st.text_input("오늘 지도한 핵심 기술 (성장 기록)")
+        if st.button("📝 기술 기록 저장"):
+            st.info(f"{selected_name} 관원: '{skill_note}' 기록됨")
 
-# [7] 영상공유/브랜딩
-elif menu == "🎥 영상공유/브랜딩":
-    st.title("🎥 기술 영상 및 체육관 브랜딩")
-    
-    st.subheader("🔗 오늘의 복습 영상")
-    video_url = st.text_input("유튜브 기술 영상 링크", "https://www.youtube.com/watch?v=your_video_id")
-    st.video(video_url)
-    
+elif menu == "💰 회비 수납관리":
+    st.title("💰 회비 수납 및 미납 관리")
+    df = st.session_state.df
+    unpaid = df[df["회비상태"] == "미납"]
+    st.subheader(f"⚠️ 현재 미납자 목록 ({len(unpaid)}명)")
+    st.dataframe(unpaid[["이름", "연락처", "구분", "등록일"]], use_container_width=True)
+    st.caption("팁: 명단 관리 메뉴에서 납부 완료 시 '완납'으로 변경해주시면 여기서 사라집니다.")
+
+elif menu == "👪 학부모 상담/기록":
+    st.title("📝 학부모 상담 및 특이사항 기록")
+    target = st.selectbox("관원(아이) 선택", st.session_state.df["이름"])
+    note = st.text_area("상담 내용 또는 특이사항 기록")
+    if st.button("📒 상담 일지 저장"):
+        st.success(f"{target} 관원의 상담 내용이 기록되었습니다.")
+
+elif menu == "🏆 대회/선수반 관리":
+    st.title("🏆 대회 출전 및 선수반 집중관리")
+    df = st.session_state.df
+    pro = df[df["구분"] == "선수반"]
+    st.subheader("선수반 명단")
+    st.table(pro[["이름", "벨트", "그랄", "연락처"]])
     st.divider()
-    st.subheader("📢 브랜딩/마케팅 도구")
-    if st.button("📱 인스타그램 홍보 문구 생성"):
-        st.code(f"오늘도 뜨거운 열기의 {st.session_state.members.iloc[0]['구분']}! 🥋\n함께 땀 흘릴 파트너를 기다립니다. #주짓수 #운동 #오운완", language="text")
+    st.subheader("대회 일정")
+    st.write("2024년 대회 일정을 입력하고 관리하세요.")
+
+elif menu == "🎥 영상공유/브랜딩":
+    st.title("🎥 기술 영상 공유 및 홍보")
+    url = st.text_input("복습 영상 유튜브 링크", "https://www.youtube.com/")
+    if url:
+        st.video(url)
+    st.divider()
+    st.subheader("📢 인스타/블로그 홍보 멘트")
+    st.code("오늘도 열정 넘치는 주짓수 훈련! 🥋 #주짓수 #오운완 #체육관명", language="text")

@@ -26,15 +26,12 @@ MEMBER_COLS = ["이름", "연락처", "구분", "벨트", "그랄", "최근승�
 if 'df' not in st.session_state:
     df_loaded = load_data(MEMBERS_FILE, MEMBER_COLS)
     
-    # 미존재 컬럼 자동 생성
     for col in MEMBER_COLS:
         if col not in df_loaded.columns:
             df_loaded[col] = ""
 
-    # 최근승급일 누락 시 오늘 날짜 채우기
     df_loaded["최근승급일"] = df_loaded["최근승급일"].fillna(datetime.now().strftime("%Y-%m-%d"))
 
-    # 3개월 뒤 다음 승급 예정일 자동 계산
     def calc_next_promo(date_str):
         try:
             dt = datetime.strptime(str(date_str).strip(), "%Y-%m-%d")
@@ -44,6 +41,10 @@ if 'df' not in st.session_state:
 
     df_loaded["다음승급예정일"] = df_loaded["최근승급일"].apply(calc_next_promo)
     st.session_state.df = df_loaded
+
+# 되돌리기(Undo) 백업 백업본 초기화
+if 'prev_df' not in st.session_state:
+    st.session_state.prev_df = st.session_state.df.copy()
 
 if 'vdf' not in st.session_state:
     st.session_state.vdf = load_data(VIDEOS_FILE, ["카테고리", "제목", "링크", "설명"])
@@ -64,7 +65,6 @@ menu = st.sidebar.radio("메뉴 이동", [
     "👪 상담/브랜딩"
 ])
 
-# 선택지 목록 및 색상 지정
 BELT_LIST = ["화이트", "그레이", "옐로우", "오렌지", "블루", "퍼플", "브라운", "블랙"]
 STRIPE_LIST = ["0그랄", "1그랄", "2그랄", "3그랄", "4그랄"]
 GROUP_LIST = ["일반부", "키즈부", "선수반"]
@@ -105,10 +105,12 @@ elif menu == "🎓 관원 명단/승급":
             stripe = col2.selectbox("그랄 선택", STRIPE_LIST)
             promo_date = col3.date_input("최근 승급일", datetime.now())
             
-            # 다음 승급일 자동 계산 (3개월 뒤)
             next_promo_date = (promo_date + timedelta(days=90)).strftime("%Y-%m-%d")
             
             if st.form_submit_button("등록 완료"):
+                # 현재 상태를 백업
+                st.session_state.prev_df = st.session_state.df.copy()
+                
                 new_m = {
                     "이름": name, "연락처": contact, "구분": group, 
                     "벨트": belt, "그랄": stripe, 
@@ -125,7 +127,6 @@ elif menu == "🎓 관원 명단/승급":
     card_view = st.toggle("카드 보기 모드", value=False)
     
     if card_view:
-        # 카드 디자인 모드
         st.subheader("🥋 관원 프로필 카드")
         if not st.session_state.df.empty:
             cols = st.columns(3)
@@ -152,10 +153,20 @@ elif menu == "🎓 관원 명단/승급":
         else:
             st.info("등록된 관원이 없습니다.")
     else:
-        # 직관적인 원터치 실시간 편집 표
-        st.subheader("⚡ 실시간 관원 정보 편집 (수정 시 자동 저장)")
-        st.caption("💡 벨트, 그랄, 최근 승급일 등을 수정하면 자동으로 저장되며 3개월 뒤 승급 예정일도 자동 갱신됩니다.")
+        # 실시간 편집 및 되돌리기 제어 구역
+        col_title, col_undo = st.columns([3, 1])
+        with col_title:
+            st.subheader("⚡ 실시간 관원 정보 편집 (수정 시 자동 저장)")
+            st.caption("💡 벨트, 그랄, 최근 승급일 등을 수정하면 자동으로 저장됩니다.")
         
+        with col_undo:
+            st.write("") # 여백
+            if st.button("🔄 실수로 수정함! 이전으로 되돌리기", type="secondary"):
+                st.session_state.df = st.session_state.prev_df.copy()
+                save_data(st.session_state.df, MEMBERS_FILE)
+                st.toast("↩️ 직전 데이터 상태로 복구되었습니다!", icon="🔄")
+                st.rerun()
+
         column_config = {
             "구분": st.column_config.SelectboxColumn("구분", options=GROUP_LIST, required=True),
             "벨트": st.column_config.SelectboxColumn("벨트", options=BELT_LIST, required=True),
@@ -174,8 +185,12 @@ elif menu == "🎓 관원 명단/승급":
             key="member_editor"
         )
         
-        # 데이터 변경 시 자동 계산 및 자동 저장
+        # 데이터 변경 발생 시
         if not edited_df.equals(st.session_state.df):
+            # 1. 수정 직전 상태 백업
+            st.session_state.prev_df = st.session_state.df.copy()
+            
+            # 2. 3개월 뒤 승급일 자동 계산
             for idx in edited_df.index:
                 try:
                     recent_val = str(edited_df.loc[idx, "최근승급일"]).strip()
@@ -184,6 +199,7 @@ elif menu == "🎓 관원 명단/승급":
                 except:
                     pass
             
+            # 3. 새로운 데이터 세션 반영 및 자동 저장
             st.session_state.df = edited_df
             save_data(edited_df, MEMBERS_FILE)
             st.toast("⚡ 수정한 내용이 자동으로 저장되었습니다!", icon="✅")

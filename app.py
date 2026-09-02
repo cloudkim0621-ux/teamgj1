@@ -20,9 +20,15 @@ def load_data(file, columns):
 def save_data(df, file):
     df.to_csv(file, index=False, encoding='utf-8-sig')
 
-# 세션 데이터 초기화
+# 세션 데이터 초기화 (승급일자 컬럼 추가)
+MEMBER_COLS = ["이름", "연락처", "구분", "벨트", "그랄", "최근승급일", "회비상태", "등록일", "상담기록"]
+
 if 'df' not in st.session_state:
-    st.session_state.df = load_data(MEMBERS_FILE, ["이름", "연락처", "구분", "벨트", "그랄", "회비상태", "등록일", "상담기록"])
+    st.session_state.df = load_data(MEMBERS_FILE, MEMBER_COLS)
+    # 기존 데이터에 최근승급일이 없을 경우 자동 보완
+    if "최근승급일" not in st.session_state.df.columns:
+        st.session_state.df["최근승급일"] = datetime.now().strftime("%Y-%m-%d")
+
 if 'vdf' not in st.session_state:
     st.session_state.vdf = load_data(VIDEOS_FILE, ["카테고리", "제목", "링크", "설명"])
 if 'pdf' not in st.session_state:
@@ -30,7 +36,7 @@ if 'pdf' not in st.session_state:
 if 'adf' not in st.session_state:
     st.session_state.adf = load_data(ATTEND_FILE, ["날짜", "이름", "구분"])
 
-# 3. 사이드바 메뉴 (관장님 요청하신 모든 메뉴)
+# 3. 사이드바 메뉴
 st.sidebar.title("🥋 OSS! ADMIN")
 menu = st.sidebar.radio("메뉴 이동", [
     "🏠 홈/대시보드", 
@@ -43,6 +49,11 @@ menu = st.sidebar.radio("메뉴 이동", [
 ])
 
 BELT_LIST = ["화이트", "그레이", "옐로우", "오렌지", "블루", "퍼플", "브라운", "블랙"]
+BELT_COLORS = {
+    "화이트": "#FFFFFF", "그레이": "#808080", "옐로우": "#FFD700", 
+    "오렌지": "#FFA500", "블루": "#1E90FF", "퍼플": "#8A2BE2", 
+    "브라운": "#8B4513", "블랙": "#000000"
+}
 
 # --- 메뉴별 기능 상세 ---
 
@@ -60,26 +71,71 @@ if menu == "🏠 홈/대시보드":
 
 elif menu == "🎓 관원 명단/승급":
     st.title("🎓 관원 및 승급 관리")
+    
+    # 신규 관원 등록
     with st.expander("➕ 신규 관원 등록"):
         with st.form("add_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             name = col1.text_input("이름")
-            group = col1.selectbox("구분", ["일반부", "키즈부", "선수반"])
-            belt = col2.selectbox("벨트", BELT_LIST)
+            contact = col2.text_input("연락처", "010-0000-0000")
+            group = col3.selectbox("구분", ["일반부", "키즈부", "선수반"])
+            
+            belt = col1.selectbox("벨트", BELT_LIST)
             stripe = col2.slider("그랄", 0, 4, 0)
+            promo_date = col3.date_input("승급일자", datetime.now())
+            
             if st.form_submit_button("등록 완료"):
-                new_m = {"이름": name, "연락처": "010-0000-0000", "구분": group, "벨트": belt, "그랄": stripe, "회비상태": "미납", "등록일": datetime.now().strftime("%Y-%m-%d"), "상담기록": ""}
+                new_m = {
+                    "이름": name, "연락처": contact, "구분": group, 
+                    "벨트": belt, "그랄": stripe, 
+                    "최근승급일": promo_date.strftime("%Y-%m-%d"),
+                    "회비상태": "미납", "등록일": datetime.now().strftime("%Y-%m-%d"), "상담기록": ""
+                }
                 st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_m])], ignore_index=True)
                 save_data(st.session_state.df, MEMBERS_FILE)
                 st.success(f"{name} 관원 등록 완료!")
                 st.rerun()
+
+    st.divider()
     
-    st.subheader("✏️ 관원 정보 편집")
-    edited_df = st.data_editor(st.session_state.df, use_container_width=True, num_rows="dynamic")
-    if st.button("💾 변경사항 저장"):
-        st.session_state.df = edited_df
-        save_data(edited_df, MEMBERS_FILE)
-        st.success("관원 명단이 저장되었습니다.")
+    # 🎛️ 핵심 요청 기능: 버튼 1개로 변하는 디자인 모드 스위치
+    design_mode = st.toggle("🎨 멋진 카드 디자인 모드로 보기 (버튼 1개 전환)", value=False)
+    
+    if design_mode:
+        # 디자인 들어간 카드 형태 모드
+        st.subheader("🥋 관원 프로필 카드")
+        if not st.session_state.df.empty:
+            cols = st.columns(3)
+            for idx, row in enumerate(st.session_state.df.itertuples()):
+                b_color = BELT_COLORS.get(row.벨트, "#000000")
+                t_color = "#FFFFFF" if row.벨트 in ["블랙", "브라운", "블루", "퍼플"] else "#000000"
+                
+                with cols[idx % 3]:
+                    st.markdown(f"""
+                        <div style="border: 2px solid #E0E0E0; border-radius: 12px; padding: 15px; margin-bottom: 15px; background-color: #FAFAFA; box-shadow: 2px 2px 8px rgba(0,0,0,0.05);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <h3 style="margin:0; color:#111;">{row.이름} <span style="font-size:14px; color:#666;">({row.구분})</span></h3>
+                                <span style="background-color:{b_color}; color:{t_color}; padding:4px 12px; border-radius:20px; font-weight:bold; font-size:13px; border:1px solid #CCC;">
+                                    {row.벨트} {row.그랄}그랄
+                                </span>
+                            </div>
+                            <hr style="margin: 10px 0;">
+                            <p style="margin: 4px 0; font-size: 14px;"><b>📅 최근 승급일:</b> {row.최근승급일}</p>
+                            <p style="margin: 4px 0; font-size: 14px;"><b>📞 연락처:</b> {row.연락처}</p>
+                            <p style="margin: 4px 0; font-size: 14px;"><b>💳 회비:</b> <span style="color:{'red' if row.회비상태=='미납' else 'green'};"><b>{row.회비상태}</b></span></p>
+                        </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("등록된 관원이 없습니다.")
+            
+    else:
+        # 기존 심플 데이터 표 모드 (빠른 편집 가능)
+        st.subheader("✏️ 관원 정보 빠른 편집")
+        edited_df = st.data_editor(st.session_state.df, use_container_width=True, num_rows="dynamic")
+        if st.button("💾 변경사항 저장"):
+            st.session_state.df = edited_df
+            save_data(edited_df, MEMBERS_FILE)
+            st.success("관원 명단 및 승급 정보가 저장되었습니다.")
 
 elif menu == "✅ 매일 출석체크":
     st.title("✅ 오늘 훈련 출석")
@@ -120,7 +176,7 @@ elif menu == "📸 사진 성장기록":
 
 elif menu == "💰 회비 수납관리":
     st.title("💰 회비 수납 현황")
-    st.write("미납자 명단 (편집 메뉴에서 '수납완료'로 변경 가능)")
+    st.write("미납자 명단")
     st.dataframe(st.session_state.df[st.session_state.df["회비상태"] == "미납"], use_container_width=True)
 
 elif menu == "🎥 기술 영상 도서관":
@@ -147,7 +203,6 @@ elif menu == "🎥 기술 영상 도서관":
                     with v_cols[v_idx % 2]:
                         st.video(v_row.링크)
                         st.subheader(v_row.제목)
-    else: st.info("기술 영상을 등록해주세요.")
 
 elif menu == "👪 상담/브랜딩":
     st.title("📝 학부모 상담 기록")
@@ -159,8 +214,3 @@ elif menu == "👪 상담/브랜딩":
             st.session_state.df.at[idx, "상담기록"] = s_note
             save_data(st.session_state.df, MEMBERS_FILE)
             st.success(f"{s_target} 관원의 상담 내용이 저장되었습니다.")
-        
-        st.divider()
-        st.subheader("이전 상담 기록 확인")
-        st.write(st.session_state.df[st.session_state.df["이름"] == s_target][["이름", "상담기록"]])
-    else: st.info("관원을 먼저 등록해주세요.")

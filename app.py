@@ -47,7 +47,7 @@ menu = st.sidebar.radio("메뉴 이동", [
     "👪 상담/브랜딩"
 ])
 
-# 드롭다운 선택지 목록 지정
+# 선택지 목록
 BELT_LIST = ["화이트", "그레이", "옐로우", "오렌지", "블루", "퍼플", "브라운", "블랙"]
 STRIPE_LIST = ["0그랄", "1그랄", "2그랄", "3그랄", "4그랄"]
 
@@ -100,7 +100,7 @@ elif menu == "🎓 관원 명단/승급":
 
     st.divider()
     
-    # 요청사항 반영: 스위치 명칭 변경
+    # 카드 형식 전환 스위치
     card_view = st.toggle("카드 형식 전환", value=False)
     
     if card_view:
@@ -183,28 +183,46 @@ elif menu == "💰 회비 수납관리":
 
 elif menu == "🎥 기술 영상 도서관":
     st.title("🎥 기술 영상 저장소")
+    
+    # 사이드바 영상 등록 창
     with st.sidebar:
         st.divider()
-        v_cat = st.selectbox("분류", ["가드", "패스", "서브미션", "테이크다운", "기타"])
-        v_name = st.text_input("기술명")
+        st.subheader("📹 새 영상 등록")
+        v_cat = st.selectbox("분류 선택", ["가드", "패스", "서브미션", "테이크다운", "기타"])
+        v_name = st.text_input("기술명 (예: 니컷 패스)")
         v_link = st.text_input("유튜브 링크")
         if st.button("기술 영상 저장"):
-            new_v = {"카테고리": v_cat, "제목": v_name, "링크": v_link, "설명": ""}
-            st.session_state.vdf = pd.concat([st.session_state.vdf, pd.DataFrame([new_v])], ignore_index=True)
-            save_data(st.session_state.vdf, VIDEOS_FILE)
-            st.rerun()
+            if v_name and v_link:
+                new_v = {"카테고리": v_cat, "제목": v_name, "링크": v_link, "설명": ""}
+                st.session_state.vdf = pd.concat([st.session_state.vdf, pd.DataFrame([new_v])], ignore_index=True)
+                save_data(st.session_state.vdf, VIDEOS_FILE)
+                st.success(f"'{v_name}' 영상이 저장되었습니다!")
+                st.rerun()
+            else:
+                st.warning("기술명과 링크를 모두 입력해주세요.")
 
     vdf = st.session_state.vdf
     if not vdf.empty:
-        v_tabs = st.tabs(["전체"] + list(vdf["카테고리"].unique()))
-        for i, tab in enumerate(v_tabs):
-            with tab:
-                f_vdf = vdf if i == 0 else vdf[vdf["카테고리"] == tab.label]
-                v_cols = st.columns(2)
-                for v_idx, v_row in enumerate(f_vdf.itertuples()):
-                    with v_cols[v_idx % 2]:
-                        st.video(v_row.링크)
-                        st.subheader(v_row.제목)
+        # 카테고리 필터 (버그 해결)
+        categories = ["전체"] + list(vdf["카테고리"].unique())
+        selected_cat = st.radio("카테고리 필터", categories, horizontal=True)
+        st.divider()
+
+        if selected_cat == "전체":
+            filtered_vdf = vdf
+        else:
+            filtered_vdf = vdf[vdf["카테고리"] == selected_cat]
+
+        if not filtered_vdf.empty:
+            v_cols = st.columns(2)
+            for v_idx, v_row in enumerate(filtered_vdf.itertuples()):
+                with v_cols[v_idx % 2]:
+                    st.subheader(f"[{v_row.카테고리}] {v_row.제목}")
+                    st.video(v_row.링크)
+        else:
+            st.info(f"'{selected_cat}' 카테고리에 등록된 영상이 없습니다.")
+    else:
+        st.info("등록된 기술 영상이 없습니다. 왼쪽 사이드바에서 영상 링크를 추가해보세요!")
 
 elif menu == "👪 상담/브랜딩":
     st.title("📝 학부모 상담 기록")

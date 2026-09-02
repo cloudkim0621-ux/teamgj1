@@ -24,22 +24,26 @@ def save_data(df, file):
 MEMBER_COLS = ["이름", "연락처", "구분", "벨트", "그랄", "최근승급일", "다음승급예정일", "회비상태", "등록일", "상담기록"]
 
 if 'df' not in st.session_state:
-    st.session_state.df = load_data(MEMBERS_FILE, MEMBER_COLS)
+    df_loaded = load_data(MEMBERS_FILE, MEMBER_COLS)
     
-    # 필수 컬럼 보장 및 기본값 채우기
-    if "최근승급일" not in st.session_state.df.columns:
-        st.session_state.df["최근승급일"] = datetime.now().strftime("%Y-%m-%d")
-    
-    # 최근 승급일 기준 3개월 뒤를 다음 승급 예정일로 자동 계산
-    if "다음승급예정일" not in st.session_state.df.columns or st.session_state.df["다음승급예정일"].isnull().any():
-        def calc_next_promo(date_str):
-            try:
-                dt = datetime.strptime(str(date_str), "%Y-%m-%d")
-                return (dt + timedelta(days=90)).strftime("%Y-%m-%d")
-            except:
-                return (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
-        
-        st.session_state.df["다음승급예정일"] = st.session_state.df["최근승급일"].apply(calc_next_promo)
+    # 미존재 컬럼 자동 생성
+    for col in MEMBER_COLS:
+        if col not in df_loaded.columns:
+            df_loaded[col] = ""
+
+    # 최근승급일 누락 시 오늘 날짜 채우기
+    df_loaded["최근승급일"] = df_loaded["최근승급일"].fillna(datetime.now().strftime("%Y-%m-%d"))
+
+    # 3개월 뒤 다음 승급 예정일 자동 계산
+    def calc_next_promo(date_str):
+        try:
+            dt = datetime.strptime(str(date_str).strip(), "%Y-%m-%d")
+            return (dt + timedelta(days=90)).strftime("%Y-%m-%d")
+        except:
+            return (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
+
+    df_loaded["다음승급예정일"] = df_loaded["최근승급일"].apply(calc_next_promo)
+    st.session_state.df = df_loaded
 
 if 'vdf' not in st.session_state:
     st.session_state.vdf = load_data(VIDEOS_FILE, ["카테고리", "제목", "링크", "설명"])
@@ -114,7 +118,7 @@ elif menu == "🎓 관원 명단/승급":
                 }
                 st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_m])], ignore_index=True)
                 save_data(st.session_state.df, MEMBERS_FILE)
-                st.success(f"{name} 관원 등록 완료! (다음 승급 예정일: {next_promo_date})")
+                st.success(f"{name} 관원 등록 완료!")
                 st.rerun()
 
     st.divider()
@@ -150,17 +154,16 @@ elif menu == "🎓 관원 명단/승급":
     else:
         # 직관적인 원터치 실시간 편집 표
         st.subheader("⚡ 실시간 관원 정보 편집 (수정 시 자동 저장)")
-        st.caption("💡 표에서 벨트, 그랄, 최근승급일 등을 수정하면 별도의 저장 버튼 없이 즉시 실시간 저장됩니다.")
+        st.caption("💡 벨트, 그랄, 최근 승급일 등을 수정하면 자동으로 저장되며 3개월 뒤 승급 예정일도 자동 갱신됩니다.")
         
-        # 컬럼별 스마트 입력 방식 설정
         column_config = {
             "구분": st.column_config.SelectboxColumn("구분", options=GROUP_LIST, required=True),
             "벨트": st.column_config.SelectboxColumn("벨트", options=BELT_LIST, required=True),
             "그랄": st.column_config.SelectboxColumn("그랄", options=STRIPE_LIST, required=True),
             "회비상태": st.column_config.SelectboxColumn("회비상태", options=FEE_LIST, required=True),
-            "최근승급일": st.column_config.DateColumn("최근 승급일", format="YYYY-MM-DD"),
-            "다음승급예정일": st.column_config.DateColumn("다음 승급 예정일 (3개월 뒤)", format="YYYY-MM-DD", disabled=True),
-            "등록일": st.column_config.DateColumn("등록일", format="YYYY-MM-DD"),
+            "최근승급일": st.column_config.TextColumn("최근 승급일 (YYYY-MM-DD)"),
+            "다음승급예정일": st.column_config.TextColumn("다음 승급 예정일 (3개월 뒤)", disabled=True),
+            "등록일": st.column_config.TextColumn("등록일"),
         }
 
         edited_df = st.data_editor(
@@ -171,13 +174,13 @@ elif menu == "🎓 관원 명단/승급":
             key="member_editor"
         )
         
-        # 변경 사항 감지 후 자동 저장 및 3개월 뒤 다음 승급일 자동 갱신
+        # 데이터 변경 시 자동 계산 및 자동 저장
         if not edited_df.equals(st.session_state.df):
-            # 최근 승급일이 수정되었으면 다음 승급 예정일을 90일 뒤로 자동 업데이트
             for idx in edited_df.index:
                 try:
-                    recent_date = datetime.strptime(str(edited_df.loc[idx, "최근승급일"]), "%Y-%m-%d")
-                    edited_df.loc[idx, "다음승급예정일"] = (recent_date + timedelta(days=90)).strftime("%Y-%m-%d")
+                    recent_val = str(edited_df.loc[idx, "최근승급일"]).strip()
+                    dt = datetime.strptime(recent_val, "%Y-%m-%d")
+                    edited_df.loc[idx, "다음승급예정일"] = (dt + timedelta(days=90)).strftime("%Y-%m-%d")
                 except:
                     pass
             

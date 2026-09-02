@@ -20,12 +20,11 @@ def load_data(file, columns):
 def save_data(df, file):
     df.to_csv(file, index=False, encoding='utf-8-sig')
 
-# 세션 데이터 초기화 (승급일자 컬럼 추가)
+# 세션 데이터 초기화
 MEMBER_COLS = ["이름", "연락처", "구분", "벨트", "그랄", "최근승급일", "회비상태", "등록일", "상담기록"]
 
 if 'df' not in st.session_state:
     st.session_state.df = load_data(MEMBERS_FILE, MEMBER_COLS)
-    # 기존 데이터에 최근승급일이 없을 경우 자동 보완
     if "최근승급일" not in st.session_state.df.columns:
         st.session_state.df["최근승급일"] = datetime.now().strftime("%Y-%m-%d")
 
@@ -48,7 +47,10 @@ menu = st.sidebar.radio("메뉴 이동", [
     "👪 상담/브랜딩"
 ])
 
+# 드롭다운 선택지 목록 지정
 BELT_LIST = ["화이트", "그레이", "옐로우", "오렌지", "블루", "퍼플", "브라운", "블랙"]
+STRIPE_LIST = ["0그랄", "1그랄", "2그랄", "3그랄", "4그랄"]
+
 BELT_COLORS = {
     "화이트": "#FFFFFF", "그레이": "#808080", "옐로우": "#FFD700", 
     "오렌지": "#FFA500", "블루": "#1E90FF", "퍼플": "#8A2BE2", 
@@ -80,8 +82,8 @@ elif menu == "🎓 관원 명단/승급":
             contact = col2.text_input("연락처", "010-0000-0000")
             group = col3.selectbox("구분", ["일반부", "키즈부", "선수반"])
             
-            belt = col1.selectbox("벨트", BELT_LIST)
-            stripe = col2.slider("그랄", 0, 4, 0)
+            belt = col1.selectbox("벨트 선택", BELT_LIST)
+            stripe = col2.selectbox("그랄 선택", STRIPE_LIST)
             promo_date = col3.date_input("승급일자", datetime.now())
             
             if st.form_submit_button("등록 완료"):
@@ -98,12 +100,12 @@ elif menu == "🎓 관원 명단/승급":
 
     st.divider()
     
-    # 🎛️ 핵심 요청 기능: 버튼 1개로 변하는 디자인 모드 스위치
-    design_mode = st.toggle("🎨 멋진 카드 디자인 모드로 보기 (버튼 1개 전환)", value=False)
+    # 요청사항 반영: 스위치 명칭 변경
+    card_view = st.toggle("카드 형식 전환", value=False)
     
-    if design_mode:
-        # 디자인 들어간 카드 형태 모드
-        st.subheader("🥋 관원 프로필 카드")
+    if card_view:
+        # 카드 디자인 모드
+        st.subheader("🥋 관원 프로필")
         if not st.session_state.df.empty:
             cols = st.columns(3)
             for idx, row in enumerate(st.session_state.df.itertuples()):
@@ -116,7 +118,7 @@ elif menu == "🎓 관원 명단/승급":
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <h3 style="margin:0; color:#111;">{row.이름} <span style="font-size:14px; color:#666;">({row.구분})</span></h3>
                                 <span style="background-color:{b_color}; color:{t_color}; padding:4px 12px; border-radius:20px; font-weight:bold; font-size:13px; border:1px solid #CCC;">
-                                    {row.벨트} {row.그랄}그랄
+                                    {row.벨트} {row.그랄}
                                 </span>
                             </div>
                             <hr style="margin: 10px 0;">
@@ -129,7 +131,7 @@ elif menu == "🎓 관원 명단/승급":
             st.info("등록된 관원이 없습니다.")
             
     else:
-        # 기존 심플 데이터 표 모드 (빠른 편집 가능)
+        # 기본 데이터 표 모드
         st.subheader("✏️ 관원 정보 빠른 편집")
         edited_df = st.data_editor(st.session_state.df, use_container_width=True, num_rows="dynamic")
         if st.button("💾 변경사항 저장"):

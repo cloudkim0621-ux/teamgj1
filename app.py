@@ -146,8 +146,8 @@ elif menu == "🎓 관원 명단/승급":
         else:
             st.info("등록된 관원이 없습니다.")
     else:
-        st.subheader("✏️ 관원 정보 빠른 편집")
-        st.caption("💡 수정 후 하단의 [💾 변경사항 저장] 버튼을 누르면 저장이 완료됩니다.")
+        st.subheader("⚡ 실시간 관원 정보 편집 (수정 시 자동 저장)")
+        st.caption("💡 표에서 벨트, 그랄, 최근 승급일 등을 수정하면 실시간으로 자동 저장됩니다.")
         
         column_config = {
             "구분": st.column_config.SelectboxColumn("구분", options=GROUP_LIST, required=True),
@@ -167,8 +167,8 @@ elif menu == "🎓 관원 명단/승급":
             key="member_editor"
         )
         
-        if st.button("💾 변경사항 저장", type="primary"):
-            # 3개월 뒤 승급일 자동 업데이트 후 저장
+        # 데이터 변경 시 자동 계산 및 자동 저장
+        if not edited_df.equals(st.session_state.df):
             for idx in edited_df.index:
                 try:
                     recent_val = str(edited_df.loc[idx, "최근승급일"]).strip()
@@ -179,8 +179,7 @@ elif menu == "🎓 관원 명단/승급":
             
             st.session_state.df = edited_df
             save_data(edited_df, MEMBERS_FILE)
-            st.success("관원 명단 및 승급 정보가 완전히 저장되었습니다!")
-            st.rerun()
+            st.toast("⚡ 수정한 내용이 자동으로 저장되었습니다!", icon="✅")
 
 elif menu == "✅ 매일 출석체크":
     st.title("✅ 오늘 훈련 출석")
